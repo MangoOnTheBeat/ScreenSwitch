@@ -53,3 +53,7 @@ This writes `ScreenSwitch.exe` next to the `src` folder.
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
+## Disclaimer
+
+Screen Switch is provided "as is", without warranty of any kind. You use it at your own risk. The authors and contributors are not liable for any damage, data loss or other problem that comes from using it. See [LICENSE](LICENSE) for the full terms.
