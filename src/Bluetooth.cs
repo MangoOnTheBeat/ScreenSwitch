@@ -24,6 +24,10 @@ interface IDeviceTopology
 {
     void GetConnectorCount(out int count);
     void GetConnector(int index, out IConnector connector);
+    void GetSubunitCount();
+    void GetSubunit();
+    void GetPartById();
+    void GetDeviceId([MarshalAs(UnmanagedType.LPWStr)] out string id);
 }
 
 [ComImport, Guid("9C2C4058-23F5-41DE-877A-DF3AF236A09E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -42,8 +46,7 @@ interface IPart
 {
     void GetName(); void GetLocalId(); void GetGlobalId(); void GetPartType(); void GetSubType();
     void GetControlInterfaceCount(); void GetControlInterface(); void EnumPartsIncoming(); void EnumPartsOutgoing();
-    void GetTopologyObject();
-    void Activate(int context, ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object instance);
+    void GetTopologyObject(out IDeviceTopology topology);
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -101,7 +104,7 @@ static class Bluetooth
     [DllImport("kernel32.dll")]
     static extern bool CloseHandle(IntPtr handle);
 
-    const int ClsctxAll = 23, ClsctxInprocServer = 1, KsPropertyGet = 1, Reconnect = 0, Disconnect = 1, AllStates = 0xF, AudioVideoClass = 4;
+    const int ClsctxAll = 23, KsPropertyGet = 1, Reconnect = 0, Disconnect = 1, AllStates = 0xF, AudioVideoClass = 4;
     static readonly Guid BluetoothAudio = new Guid("7FA06C40-B8F6-4C7E-8556-E8C33A12E54D");
     // The name of the device an audio endpoint belongs to, such as the headphones themselves.
     static readonly PropertyKey InterfaceName = new PropertyKey { Format = new Guid("026E516E-B814-414B-83CD-856D6FEF4822"), Id = 2 };
@@ -283,6 +286,7 @@ static class Bluetooth
         return lastError;
     }
 
+    // The sound endpoint connects to the Bluetooth audio driver's own device, and that device takes the request.
     static void Send(IMMDevice endpoint, int request)
     {
         Guid topologyId = typeof(IDeviceTopology).GUID;
@@ -292,8 +296,15 @@ static class Bluetooth
         ((IDeviceTopology)instance).GetConnector(0, out connector);
         connector.GetConnectedTo(out other);
 
+        IDeviceTopology driverTopology;
+        ((IPart)other).GetTopologyObject(out driverTopology);
+        string driverId;
+        driverTopology.GetDeviceId(out driverId);
+        IMMDevice driver;
+        ((IMMDeviceEnumerator)new MMDeviceEnumeratorCom()).GetDevice(driverId, out driver);
+
         Guid controlId = typeof(IKsControl).GUID;
-        ((IPart)other).Activate(ClsctxInprocServer, ref controlId, out instance);
+        driver.Activate(ref controlId, ClsctxAll, IntPtr.Zero, out instance);
         KsPropertyRequest property = new KsPropertyRequest { Set = BluetoothAudio, Id = request, Flags = KsPropertyGet };
         int returned;
         int result = ((IKsControl)instance).KsProperty(ref property, Marshal.SizeOf(typeof(KsPropertyRequest)), IntPtr.Zero, 0, out returned);
