@@ -20,6 +20,27 @@ public sealed class ShortcutConfig
     public bool SetupDone;
     public List<int> ScreenKeys;
     public List<SwitchProfile> Profiles;
+    public int MuteMicKey, PushToTalkKey, MuteOutputKey;
+}
+
+// The three sound shortcuts on the Audio tab.
+static class AudioShortcuts
+{
+    public const string MuteMic = "mute-mic", PushToTalk = "push-to-talk", MuteOutput = "mute-output";
+    public static readonly string[] Slots = { MuteMic, PushToTalk, MuteOutput };
+    public static readonly string[] Names = { "Mute microphone", "Push to talk", "Mute sound" };
+
+    public static int Get(ShortcutConfig config, string slot)
+    {
+        return slot == MuteMic ? config.MuteMicKey : slot == PushToTalk ? config.PushToTalkKey : config.MuteOutputKey;
+    }
+
+    public static void Set(ShortcutConfig config, string slot, int keys)
+    {
+        if (slot == MuteMic) config.MuteMicKey = keys;
+        else if (slot == PushToTalk) config.PushToTalkKey = keys;
+        else config.MuteOutputKey = keys;
+    }
 }
 
 // Saved for this Windows account only, next to the reset points.
@@ -103,12 +124,13 @@ static class Hotkey
         return code == Keys.ShiftKey || code == Keys.ControlKey || code == Keys.Menu || code == Keys.LWin || code == Keys.RWin || code == Keys.None;
     }
 
-    // Plain typing keys would stop working everywhere, so they need Ctrl or Alt. Function keys are fine alone.
+    // Plain typing keys would stop working everywhere, so they need Ctrl or Alt. Keys nobody types with are
+    // fine alone, which matters for push to talk, since a single key is easy to hold.
     public static string Problem(Keys keys)
     {
         Keys code = keys & Keys.KeyCode;
-        bool functionKey = code >= Keys.F1 && code <= Keys.F24;
-        if (!functionKey && (keys & (Keys.Control | Keys.Alt)) == 0) return "Use Ctrl or Alt in the shortcut, or a function key.";
+        bool alone = (code >= Keys.F1 && code <= Keys.F24) || (code >= Keys.NumPad0 && code <= Keys.NumPad9) || code == Keys.Pause || code == Keys.Scroll;
+        if (!alone && (keys & (Keys.Control | Keys.Alt)) == 0) return "Use Ctrl or Alt in the shortcut, or a function key, number pad key, Pause or Scroll Lock.";
         return null;
     }
 
@@ -119,6 +141,8 @@ static class Hotkey
             if (config.ScreenKeys[i] == (int)keys && !(self is int && (int)self == i)) return ScreenNames[i];
         foreach (SwitchProfile profile in config.Profiles)
             if (profile.Shortcut == (int)keys && !ReferenceEquals(profile, self)) return profile.Name;
+        for (int i = 0; i < AudioShortcuts.Slots.Length; i++)
+            if (AudioShortcuts.Get(config, AudioShortcuts.Slots[i]) == (int)keys && !Equals(AudioShortcuts.Slots[i], self)) return AudioShortcuts.Names[i];
         return null;
     }
 }

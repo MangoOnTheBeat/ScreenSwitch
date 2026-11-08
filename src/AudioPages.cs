@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Windows.Forms;
 
 // One part of the tab switcher at the top of the window. The track paints a pill that slides between them.
@@ -495,6 +496,7 @@ sealed class AudioPage : Panel
     readonly System.Windows.Forms.Timer levels = new System.Windows.Forms.Timer { Interval = 80 };
     readonly HashSet<string> known = new HashSet<string>();
     readonly Action<string> newDevice;
+    readonly PillButton more;
     bool seeded;
 
     public AudioPage(float scale, Action<string> report, Action<string> newDevice)
@@ -507,12 +509,50 @@ sealed class AudioPage : Panel
         Controls.Add(output);
         Controls.Add(input);
 
-        PillButton more = new PillButton("More sound settings", false, scale) { Bounds = new Rectangle(S(182), S(256), S(200), S(38)) };
+        more = new PillButton("More sound settings", false, scale) { Bounds = new Rectangle(S(182), S(256), S(200), S(38)) };
         more.Font = Ui.Font(13, true, scale);
         more.Click += delegate { Process.Start("ms-settings:sound"); };
         Controls.Add(more);
 
         levels.Tick += delegate { output.Tick(); input.Tick(); };
+    }
+
+    // Keys for muting from anywhere. Added once the shortcut settings have loaded.
+    public void AddShortcuts(float scale, ShortcutConfig config, ConfigStore store, HotkeyManager hotkeys, Action<string> report, Action changed)
+    {
+        Func<int, int> S = delegate(int v) { return (int)Math.Round(v * scale); };
+        string[] hints = { "Press to mute or unmute", "Hold to talk, let go to mute", "Press to mute or unmute" };
+
+        Card card = new Card(scale) { Bounds = new Rectangle(S(20), S(254), S(524), S(140)) };
+        Controls.Add(card);
+        card.Controls.Add(new Label { Text = "Audio shortcuts", Font = Ui.Font(15, true, scale), ForeColor = Ui.Text, BackColor = Ui.Card, TextAlign = ContentAlignment.MiddleLeft, Bounds = new Rectangle(S(16), S(8), S(300), S(26)) });
+
+        for (int i = 0; i < AudioShortcuts.Slots.Length; i++)
+        {
+            string slot = AudioShortcuts.Slots[i];
+            int y = 38 + i * 32;
+            card.Controls.Add(new Label { Text = AudioShortcuts.Names[i], Font = Ui.Font(13, false, scale), ForeColor = Ui.Text, BackColor = Ui.Card, TextAlign = ContentAlignment.MiddleLeft, Bounds = new Rectangle(S(16), S(y), S(130), S(30)) });
+            card.Controls.Add(new Label { Text = hints[i], Font = Ui.Font(12, false, scale), ForeColor = Ui.SubText, BackColor = Ui.Card, TextAlign = ContentAlignment.MiddleLeft, Bounds = new Rectangle(S(146), S(y), S(186), S(30)) });
+            KeyButton key = new KeyButton(scale, hotkeys, delegate(Keys keys) { return Hotkey.Holder(config, keys, slot); }, report)
+            {
+                Bounds = new Rectangle(S(336), S(y), S(172), S(30)),
+                AccessibleName = AudioShortcuts.Names[i] + " shortcut",
+                Value = (Keys)AudioShortcuts.Get(config, slot)
+            };
+            key.Changed += delegate
+            {
+                AudioShortcuts.Set(config, slot, (int)key.Value);
+                try { store.Save(config); }
+                catch (Exception e)
+                {
+                    if (!(e is IOException || e is UnauthorizedAccessException)) throw;
+                    report("Couldn't save that: " + e.Message);
+                }
+                changed();
+            };
+            card.Controls.Add(key);
+        }
+        more.Top = S(400);
     }
 
     // Only reads levels while they can be seen.

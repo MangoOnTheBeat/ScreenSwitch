@@ -900,6 +900,8 @@ sealed class MainForm : Form
         config = configStore.Load();
         hotkeys = new HotkeyManager(this);
         profilesPage = new ProfilesPage(scale, config, configStore, hotkeys, Report, RegisterShortcuts, RunSetup, UseProfile) { Bounds = displaysPage.Bounds, Visible = false };
+        audioPage.AddShortcuts(scale, config, configStore, hotkeys, Report, RegisterShortcuts);
+        talkWatch.Tick += delegate { CheckTalkKey(); };
         stage.Controls.Add(profilesPage);
         AddTabs();
 
@@ -1020,7 +1022,7 @@ sealed class MainForm : Form
     {
         currentPage = page;
         Panel[] pages = { displaysPage, settingsPage, audioPage, bluetoothPage, resetPage, profilesPage };
-        int height = pages[page] == settingsPage || pages[page] == profilesPage || pages[page] == bluetoothPage ? 442 : 308;
+        int height = pages[page] == settingsPage || pages[page] == profilesPage || pages[page] == bluetoothPage || pages[page] == audioPage ? 442 : 308;
         // Sized before the new page shows, so it never appears cut off or half drawn.
         stage.SuspendLayout();
         for (int i = 0; i < pages.Length; i++)
@@ -1088,8 +1090,72 @@ sealed class MainForm : Form
             SwitchProfile picked = profile;
             shortcuts.Add(new KeyValuePair<Keys, Action>((Keys)profile.Shortcut, delegate { UseProfile(picked); }));
         }
+        if (config.MuteMicKey != 0) shortcuts.Add(new KeyValuePair<Keys, Action>((Keys)config.MuteMicKey, delegate { ToggleMute(AudioFlow.Input); }));
+        if (config.MuteOutputKey != 0) shortcuts.Add(new KeyValuePair<Keys, Action>((Keys)config.MuteOutputKey, delegate { ToggleMute(AudioFlow.Output); }));
+        if (config.PushToTalkKey != 0) shortcuts.Add(new KeyValuePair<Keys, Action>((Keys)config.PushToTalkKey, delegate { StartTalking((Keys)config.PushToTalkKey); }));
         hotkeys.Set(shortcuts);
         if (hotkeys.Failed.Count > 0) Report("Taken by another app: " + string.Join(", ", hotkeys.Failed) + ". Pick other keys in the Profiles tab.");
+    }
+
+    [DllImport("user32.dll")]
+    static extern short GetAsyncKeyState(int key);
+
+    // Mutes or unmutes the default device, including the separate one Windows keeps for calls.
+    static List<AudioControl> DefaultControls(AudioFlow flow)
+    {
+        List<AudioControl> controls = new List<AudioControl>();
+        foreach (string id in Audio.DefaultIds(flow))
+        {
+            try { controls.Add(Audio.Open(id)); }
+            catch (COMException) { } // Unplugged a moment ago.
+        }
+        return controls;
+    }
+
+    static bool SetMuted(List<AudioControl> controls, bool muted)
+    {
+        bool done = false;
+        foreach (AudioControl control in controls)
+        {
+            try { control.Muted = muted; done = true; }
+            catch (COMException) { }
+        }
+        return done;
+    }
+
+    void ToggleMute(AudioFlow flow)
+    {
+        string what = flow == AudioFlow.Input ? "Microphone" : "Sound";
+        List<AudioControl> controls = DefaultControls(flow);
+        bool muted;
+        try { muted = controls.Count > 0 && !controls[0].Muted; }
+        catch (COMException) { controls.Clear(); muted = false; }
+        if (controls.Count == 0 || !SetMuted(controls, muted)) { Tell(what, "No " + what.ToLowerInvariant() + " found to mute."); return; }
+        Tell(what, what + (muted ? " muted" : " on"));
+    }
+
+    // Push to talk: the shortcut unmutes, then the mic mutes again as soon as that key is let go.
+    // Only that one key is checked, and only while it's held.
+    readonly System.Windows.Forms.Timer talkWatch = new System.Windows.Forms.Timer { Interval = 30 };
+    List<AudioControl> talking;
+    int talkKey;
+
+    void StartTalking(Keys keys)
+    {
+        if (talkWatch.Enabled) return;
+        talking = DefaultControls(AudioFlow.Input);
+        if (!SetMuted(talking, false)) { Report("No microphone found for push to talk."); return; }
+        talkKey = (int)(keys & Keys.KeyCode);
+        Report("Talking...");
+        talkWatch.Start();
+    }
+
+    void CheckTalkKey()
+    {
+        if ((GetAsyncKeyState(talkKey) & 0x8000) != 0) return;
+        talkWatch.Stop();
+        SetMuted(talking, true);
+        Report("Microphone muted");
     }
 
     // The window may be hidden in the tray, and a hidden window can't own the Keep or Cancel prompt.
@@ -1367,6 +1433,7 @@ sealed class MainForm : Form
     {
         watch.Stop();
         refreshSoon.Stop();
+        talkWatch.Stop();
         if (audioWatch != null) audioWatch.Dispose();
         tray.Dispose();
         base.OnFormClosed(e);

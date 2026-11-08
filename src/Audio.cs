@@ -121,7 +121,7 @@ interface IPolicyConfig
 
 static class Audio
 {
-    const int ActiveOnly = 1, RoleMultimedia = 1;
+    const int ActiveOnly = 1, RoleMultimedia = 1, RoleCommunications = 2;
     static readonly int[] DefaultRoles = { 0, 1 };
     static readonly PropertyKey FriendlyName = new PropertyKey { Format = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), Id = 14 };
 
@@ -167,10 +167,15 @@ static class Audio
 
     public static string DefaultId(AudioFlow flow)
     {
+        return DefaultId(flow, RoleMultimedia);
+    }
+
+    static string DefaultId(AudioFlow flow, int role)
+    {
         try
         {
             IMMDevice device;
-            Enumerator().GetDefaultAudioEndpoint((int)flow, RoleMultimedia, out device);
+            Enumerator().GetDefaultAudioEndpoint((int)flow, role, out device);
             string id;
             device.GetId(out id);
             return id;
@@ -179,6 +184,18 @@ static class Audio
         {
             return null;
         }
+    }
+
+    // The everyday default plus the separate one Windows keeps for calls, which apps like Discord use.
+    public static List<string> DefaultIds(AudioFlow flow)
+    {
+        List<string> ids = new List<string>();
+        foreach (int role in new[] { RoleMultimedia, RoleCommunications })
+        {
+            string id = DefaultId(flow, role);
+            if (id != null && !ids.Contains(id)) ids.Add(id);
+        }
+        return ids;
     }
 
     // Sets the default for games and music. The separate default for calls is left alone.
