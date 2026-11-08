@@ -7,6 +7,7 @@ A small Windows app for switching screens and sound in one place.
 - **Displays:** switch between Screen 1, Screen 2, Extend and Duplicate. Every change asks you to Keep or Cancel, and goes back on its own after 15 seconds if you don't answer, so a black screen fixes itself.
 - **Settings:** night light, colour profile, HDR, brightness, scale, resolution and orientation for each display.
 - **Audio:** pick your speakers and microphone, and set volume, mute and balance.
+- **Audio shortcuts:** mute your microphone, push to talk, or mute your sound from anywhere. You choose the keys, and a single key like F13 or a number pad key works too.
 - **Bluetooth:** see your paired devices and whether they're connected. Headphones and speakers get a Connect and Disconnect button.
 - **Reset:** save your current setup and go back to it later. Your original setup is saved the first time the app runs.
 - **Profiles:** save a set of screens, speakers and microphone, and switch to all of them at once.
